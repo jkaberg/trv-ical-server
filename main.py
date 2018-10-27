@@ -2,17 +2,24 @@
 # -*- coding: utf-8 -*-
 
 import requests
-from flask import Flask, Response, request
-from ics import Calendar, Event
 from bs4 import BeautifulSoup
+from ics import Calendar, Event
+from flask_caching import Cache
+from flask import Flask, Response, request
+
 
 app = Flask(__name__)
+cache = Cache(app, config={'CACHE_TYPE': 'simple'})
+cache_timeout = 60 * 60 * 24 * 7 # 7 days
+
 
 @app.route('/')
+@cache.cached(timeout=cache_timeout)
 def hello():
     return 'usage: {0}*plan_id*.ics<br /><br />for plan_id see: https://trv.no > search > its the latter part of the url (numeric)'.format(request.base_url)
 
 @app.route('/<plan_id>.ics')
+@cache.cached(timeout=cache_timeout)
 def calendar(plan_id):
     cal = str(fetch_plan(plan_id))
     hax = cal.split('\n')
