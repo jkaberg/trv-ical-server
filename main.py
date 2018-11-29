@@ -26,6 +26,11 @@ def fetch_plan(plan_id):
     page = requests.get(url).text
 
     soup = BeautifulSoup(page, 'html.parser')
+    title = soup.find('title').string
+
+    if title.startswith('Side ikke funnet') or len(page) == 0:
+        return 'you sure this is an correct plan id?'
+
     table = soup.find("table", {"class": "bins"})
 
     c = Calendar()
