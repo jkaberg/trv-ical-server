@@ -1,6 +1,6 @@
 bs4
-ics
 flask
 gevent
 requests
+icalendar
 Flask-Caching
