@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+import uuid
 import requests
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -61,6 +62,7 @@ def fetch_plan(plan_id):
 
             e = Event()
             e.add('description', trv_type)
+            e.add('uid', str(uuid.uuid4()))
             e.add('summary', trv_type)
             e.add('dtstart', datetime(int(start_year), int(start[1]), int(start[0])).date())
             e.add('dtend', datetime(int(year), int(end[1]), int(end[0])).date())
