@@ -4,36 +4,37 @@
 import uuid
 import requests
 from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
-from flask_caching import Cache
 from flask import Flask, Response, request
 from icalendar import Calendar, Event, Alarm
 
 
 app = Flask(__name__)
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
-cache_timeout = 60 * 60 * 24 * 7 # 7 days
 
 
 @app.route('/')
-@cache.cached(timeout=cache_timeout)
 def hello():
     return 'usage: {0}*plan_id*.ics<br /><br />for plan_id see: https://trv.no > search > its the latter part of the url (numeric)'.format(request.base_url)
 
 
 @app.route('/<plan_id>.ics')
-@cache.cached(timeout=cache_timeout)
 def fetch_plan(plan_id):
-    url = 'https://trv.no/plan/{0}/'.format(plan_id)
-    page = requests.get(url).text
+    wd = request.args.get('wd', default=None, type=int)
+    lang = request.args.get('lang', default='no', type=str)
+    alert = request.args.get('alert', default=True, type=bool)
 
-    soup = BeautifulSoup(page, 'html.parser')
-    title = soup.find('title').string
+    page = requests.get('https://trv.no/wp-json/wasteplan/v1/calendar/{0}'.format(plan_id))
 
-    if title.startswith('Side ikke funnet') or len(page) == 0:
-        return 'you sure this is an correct plan id?'
+    if page.json():
+        try:
+            r = page.json()
 
-    table = soup.find("table", {"class": "bins"})
+            if r.get('data'):
+                if r.get('data').get('status') == 404:
+                    return Response('404 - not found')
+
+        except ValueError() as e:
+            return Response(e)
+
 
     c = Calendar()
     c.add('X-WR-RELCALID', 'TRV Tømmeplan')
@@ -42,59 +43,50 @@ def fetch_plan(plan_id):
     c.add('X-FROM-URL', '{0}'.format(request.base_url))
     c.add('X-AUTHOR', 'https://github.com/jkaberg/trv-ical-server')
 
-    for table_row in table.select('tbody tr'):
-        class_data = table_row["class"]
+    for week in r['calendar']:
 
-        year = class_data[0].replace('year-', '')
-        week_type = None
+        # default til norwegian language
+        wastetype = week['wastetype'].lower()
+        empty_msg = 'Kommende uke tømmes {0}.'.format(wastetype)
+        no_empty_msg = 'Avfall tømmes ikke denne uke.'
 
-        if len(class_data) > 1:
-            week_type = class_data[1]
+        # language override
+        if lang  == 'en':
+            wastetype = week['wastetype_en'].lower()
+            empty_msg = 'This week the {0}bin is emptied.'.format(wastetype)
+            no_empty_msg = 'Wastebins will not be emptied this week.'
 
-        cells = table_row.findAll('td')
+        title = '{0}'.format(wastetype.capitalize())
+        summary = title #'\n'.join(list(week['description'])[0].keys()[lang]) # TODO: actully parse this and present it in the summary
 
-        if len(cells) > 0:
+        date_week_start = datetime.strptime(week['date_week_start'], '%Y-%m-%d')
+        date_week_end = datetime.strptime(week['date_week_end'], '%Y-%m-%d') - timedelta(days=2) # timedelta: remove saturday and sunday
 
-            dates = cells[2].text.split(' - ')
-            week = cells[0].text.strip()
-            trv_type = cells[1].text.strip()
+        # limit calendar event til a singel day instead of week with wd paramter
+        # monday til friday
+        if wd in range(0, 4):
+            date_week_start = date_week_start + timedelta(days=wd)
+            date_week_end = date_week_start + timedelta(days=1)
 
-            start = dates[0].split('.')
-            end = dates[1].split('.')
+            empty_msg = 'Imorgen tømmes {0}.'.format(wastetype)
+            if lang == 'en':
+                empty_msg = 'Tomorrow the {0}bin is emptied.'.format(wastetype)
+        
+        e = Event()
+        e.add('description', title)
+        e.add('uid', str(uuid.uuid4()))
+        e.add('summary', summary)
+        e.add('dtstart', date_week_start)
+        e.add('dtend', date_week_end - timedelta(days=2))
+        e.add('dtstamp', datetime.now())
 
-            start_year = int(year)
-            start_month = int(start[1])
-            start_day = int(start[0])
-
-            end_year = int(year)
-            end_month = int(end[1])
-            end_day = int(end[0])
-
-            # we need to check if start month is end of year and end month is start of year
-            # if this is the case we need to add a year to end_year
-            # this happends when end month is on a new year
-            if start_month == 12 and end_month == 1:
-                end_year += 1
-
-            e = Event()
-            e.add('description', trv_type)
-            e.add('uid', str(uuid.uuid4()))
-            e.add('summary', trv_type)
-            e.add('dtstart', datetime(start_year, start_month, start_day).date())
-            e.add('dtend', datetime(end_year, end_month, end_day).date() - timedelta(days=1))
-            e.add('dtstamp', datetime.now())
-
-            if week_type == 'tommefri-uke':
-                desc = 'Avfall tømmes ikke kommende uke.'
-            else:
-                desc = 'Kommende uke tømmes {0}.'.format(trv_type.lower())
-
+        if alert:
             a = Alarm()
             a.add('action', 'display')
-            a.add('trigger', datetime(start_year, start_month, start_day) - timedelta(hours=4))
-            a.add('description', desc)
+            a.add('trigger', date_week_start - timedelta(hours=4))
+            a.add('description', empty_msg if week.get('description') else no_empty_msg)
             e.add_component(a)
 
-            c.add_component(e)
+        c.add_component(e)
 
     return Response(c.to_ical(), mimetype='text/calendar')
