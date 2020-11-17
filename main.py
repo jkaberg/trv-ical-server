@@ -77,7 +77,7 @@ def fetch_plan(plan_id):
         e.add('uid', str(uuid.uuid4()))
         e.add('summary', summary)
         e.add('dtstart', date_week_start)
-        e.add('dtend', date_week_end - timedelta(days=2))
+        e.add('dtend', date_week_end)
         e.add('dtstamp', datetime.now())
 
         if alert:
