@@ -1,6 +1,4 @@
-bs4
 flask
 gevent
 requests
 icalendar
-Flask-Caching
