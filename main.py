@@ -37,6 +37,8 @@ def fetch_plan(plan_id):
 
 
     c = Calendar()
+    c.add('PRODID', 'TRV Tømmeplan')
+    c.add('VERSION', '2.0')
     c.add('X-WR-RELCALID', 'TRV Tømmeplan')
     c.add('X-WR-CALNAME', 'TRV Tømmeplan')
     c.add('X-WR-TIMEZONE', 'Europe/Oslo')
@@ -76,8 +78,9 @@ def fetch_plan(plan_id):
         e.add('description', title)
         e.add('uid', str(uuid.uuid4()))
         e.add('summary', summary)
-        e.add('dtstart', date_week_start)
-        e.add('dtend', date_week_end)
+        e.add('dtstart', date_week_start.date() if wd else date_week_start)
+        if not wd:
+            e.add('dtend', date_week_end)
         e.add('dtstamp', datetime.now())
 
         if alert:
